@@ -1,2 +1,10 @@
 .env
-data.db
+.env.*
+!.env.example
+.venv/
+venv/
+water_clogging.venv/
+**pycache**/
+*.pyc
+instance/
+*.db

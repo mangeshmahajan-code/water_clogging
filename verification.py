@@ -1,5 +1,4 @@
 import logging
-import traceback
 from flask_mail import Message
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from config import SECRET_KEY
@@ -9,12 +8,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 s = URLSafeTimedSerializer(secret_key=SECRET_KEY)
 
 def generate_verification_token(email):
-    return s.dumps(email, salt='email-confirm')
+    payload = {
+        "email": email,
+        "action": "email-verification"
+    }
+    return s.dumps(payload, salt='email-confirm')
 
 def confirm_verification_token(token, expiration=3600):
     try:
-        email = s.loads(token, salt='email-confirm', max_age=expiration)
-        return email
+        payload = s.loads(token, salt='email-confirm', max_age=expiration)
+        if isinstance(payload, dict) and payload.get("action") == "email-verification":
+            return payload.get("email")
+        if isinstance(payload, str):
+            return payload
+        return None
     except (SignatureExpired, BadSignature):
         return None
 
@@ -41,11 +48,7 @@ def send_email(email, verify_url):
     )
     mail.send(msg)
 
-
 def send_verification_email(email_to, verify_url):
-    try:
-        send_email(email=email_to, verify_url=verify_url)
-        logging.info(f"Verification email sent to {email_to}.")
-    except Exception as e:
-        logging.error(f"Error sending email to {email_to}: {str(e)}")
-        logging.error(traceback.format_exc())
+    # Let exceptions propagate so the caller (app.py) can handle sending failure properly
+    send_email(email=email_to, verify_url=verify_url)
+    logging.info(f"Verification email sent to {email_to}.")
