@@ -14,7 +14,6 @@ is_debug = _get_clean_env("FLASK_DEBUG", "False").lower() in ("true", "1", "yes"
 is_testing = _get_clean_env("TESTING", "False").lower() in ("true", "1", "yes")
 is_production = not (is_debug or is_testing)
 
-# SECRET_KEY
 SECRET_KEY = _get_clean_env("SECRET_KEY")
 if not SECRET_KEY:
     if is_debug or is_testing:
@@ -22,7 +21,6 @@ if not SECRET_KEY:
     else:
         raise RuntimeError("SECRET_KEY environment variable is required in production!")
 
-# DATABASE_URL / SQLALCHEMY_DATABASE_URI
 DATABASE_URL = _get_clean_env("DATABASE_URL")
 if not DATABASE_URL:
     if is_debug or is_testing:
@@ -30,14 +28,12 @@ if not DATABASE_URL:
     else:
         raise RuntimeError("DATABASE_URL environment variable is required in production!")
 else:
-    # Ensure postgres:// is normalized to postgresql:// for SQLAlchemy
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-# Production PostgreSQL connection pool configuration
 if SQLALCHEMY_DATABASE_URI.startswith("postgresql"):
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
@@ -46,10 +42,8 @@ if SQLALCHEMY_DATABASE_URI.startswith("postgresql"):
         "max_overflow": 20,
     }
 
-# File uploads limit (5 MB)
 MAX_CONTENT_LENGTH = 5 * 1024 * 1024
 
-# Mail server settings
 MAIL_SERVER = _get_clean_env("MAIL_SERVER", "smtp.gmail.com")
 
 mail_port_raw = _get_clean_env("MAIL_PORT", "587")
@@ -65,7 +59,6 @@ MAIL_USERNAME = _get_clean_env("MAIL_USERNAME")
 MAIL_PASSWORD = _get_clean_env("MAIL_PASSWORD")
 MAIL_DEFAULT_SENDER = _get_clean_env("MAIL_DEFAULT_SENDER", MAIL_USERNAME)
 
-# Cookies and Session Security
 SESSION_COOKIE_SECURE = _get_clean_env(
     "SESSION_COOKIE_SECURE", "True" if is_production else "False"
 ).lower() in ("true", "1", "yes")
@@ -79,15 +72,13 @@ REMEMBER_COOKIE_HTTPONLY = True
 REMEMBER_COOKIE_SAMESITE = "Lax"
 REMEMBER_COOKIE_DURATION = timedelta(days=14)
 
-# Government Authority Email Configuration
 gov_authority_raw = _get_clean_env("GOVERNMENT_AUTHORITY_EMAIL")
 if not gov_authority_raw:
     if is_production:
-        raise RuntimeError("GOVERNMENT_AUTHORITY_EMAIL environment variable is required in production!")
+        raise RuntimeError("GOVERNMENT_AUTHORITY_EMAIL environment variable is required")
     else:
         GOVERNMENT_AUTHORITY_EMAIL = "authority@example.com"
 else:
     GOVERNMENT_AUTHORITY_EMAIL = gov_authority_raw.strip().lower()
 
-# Rate limiting storage backend configuration
 RATELIMIT_STORAGE_URL = _get_clean_env("RATELIMIT_STORAGE_URL")

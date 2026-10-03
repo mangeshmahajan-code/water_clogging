@@ -156,7 +156,6 @@ class Comment(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# URL safety and open redirect defense helpers
 def is_safe_url(target):
     if not target:
         return False
@@ -169,9 +168,7 @@ def get_safe_redirect(target, default_endpoint='index', **kwargs):
         return target
     return url_for(default_endpoint, **kwargs)
 
-# Government Authority Authorization Helpers
 def is_authority(user):
-    """Check if the provided user has government authority privileges based on normalized email."""
     if not user or not user.is_authenticated:
         return False
     configured_auth = app.config.get("GOVERNMENT_AUTHORITY_EMAIL")
@@ -181,7 +178,6 @@ def is_authority(user):
     return user_email == configured_auth.strip().lower()
 
 def authority_required(f):
-    """Decorator ensuring only the authorized government email can access administrative endpoints."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
@@ -196,7 +192,7 @@ app.jinja_env.filters['format_ist'] = format_ist
 
 @app.context_processor
 def inject_template_globals():
-    """Inject authority check, allowed statuses, and datetime formatters into all Jinja template contexts."""
+    
     return dict(
         is_authority=is_authority(current_user),
         allowed_statuses=ALLOWED_STATUSES,
@@ -204,7 +200,6 @@ def inject_template_globals():
         format_ist=format_ist
     )
 
-# Rich text Bleach sanitization configurations
 ALLOWED_TAGS = ['p', 'br', 'strong', 'em', 'u', 'ol', 'ul', 'li', 'blockquote', 'a']
 ALLOWED_ATTRIBUTES = {
     'a': ['href', 'title', 'target', 'rel']
@@ -212,7 +207,6 @@ ALLOWED_ATTRIBUTES = {
 ALLOWED_PROTOCOLS = ['http', 'https']
 
 def sanitize_comment_html(raw_html: str) -> str:
-    """Sanitize user-submitted HTML using a strict allowlist to prevent XSS payloads."""
     if not raw_html:
         return ""
     cleaned = bleach.clean(
@@ -234,7 +228,6 @@ def sanitize_comment_html(raw_html: str) -> str:
     )
     return cleaned
 
-# Application security headers filter
 @app.after_request
 def add_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -258,7 +251,7 @@ def add_security_headers(response):
     response.headers['Content-Security-Policy'] = csp_directives
     return response
 
-# Error handlers mapping
+
 @app.errorhandler(400)
 def bad_request_error(e):
     return render_template("error.html", code=400, message="Bad Request. The server could not understand your request."), 400
@@ -299,7 +292,7 @@ def validate_and_sanitize_image(image_file):
         if not file_data:
             raise ValueError("No file contents detected.")
 
-        # Pillow Decompression Bomb protection
+      
         try:
             img = Image.open(io.BytesIO(file_data))
             img.verify()
@@ -308,10 +301,8 @@ def validate_and_sanitize_image(image_file):
         except Exception:
             raise ValueError("The uploaded file is not a valid image or is corrupted.")
 
-        # Re-open image as verify() invalidates file pointer
         img = Image.open(io.BytesIO(file_data))
         
-        # Verify pixel dimensions explicitly
         width, height = img.size
         if width * height > 16777216:
             raise ValueError("Image dimensions exceed the maximum 16 Megapixel limit.")
@@ -329,7 +320,6 @@ def validate_and_sanitize_image(image_file):
             content_type = "image/png"
             extension = ".png"
 
-        # Sanitize EXIF metadata by re-encoding image
         output_buffer = io.BytesIO()
         img.save(output_buffer, format=real_format)
         sanitized_bytes = output_buffer.getvalue()
@@ -342,9 +332,6 @@ def validate_and_sanitize_image(image_file):
         raise ValueError("Image processing failed due to an internal validation error.")
 
 def validate_location(latitude_str, longitude_str):
-    """
-    Validates location hidden fields.
-    """
     if not latitude_str or not longitude_str:
         raise ValueError("Please allow location access to submit a report.")
     
@@ -367,8 +354,6 @@ def validate_location(latitude_str, longitude_str):
 
 @app.route('/')
 def index():
-    # Eagerly load User relation using joinedload to prevent N+1 queries.
-    # Limit results to latest 100 reports for scalability.
     reports = db.session.execute(
         db.select(Report)
         .options(joinedload(Report.author))
@@ -379,7 +364,7 @@ def index():
     reports_list = []
     for r in reports:
         img_path = r.image_path
-        # Convert relative path stored in database to public URL dynamically
+        
         if img_path and img_path.startswith('reports/'):
             try:
                 img_path = supabase.storage.from_("water clogging images").get_public_url(img_path)
@@ -399,7 +384,6 @@ def index():
             'created_at': r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else ''
         })
 
-    # Retrieve real submitted reports count from database rather than fake mock counters
     total_reports = db.session.scalar(db.select(db.func.count(Report.id))) or 0
 
     return render_template('index.html', reports=reports_list, total_reports=total_reports)
@@ -597,11 +581,10 @@ def report():
             flash(str(err))
             return render_template("form.html", form=form, current_page=current_page, img=image_path)
 
-        # Generate unique database path
+        # database path
         filename = f"{uuid.uuid4()}{extension}"
         file_path = f"reports/{filename}"
 
-        # Upload sanitized image to Supabase Storage
         try:
             supabase.storage.from_("water clogging images").upload(
                 path=file_path,
@@ -613,7 +596,7 @@ def report():
             flash("We couldn't upload your image right now. Please try again.")
             return render_template("form.html", form=form, current_page=current_page, img=image_path)
 
-        # Create report record storing relative path in DB
+    
         report_record = Report(
             author_id=current_user.id,
             image_path=file_path,
@@ -631,7 +614,7 @@ def report():
         except Exception:
             db.session.rollback()
             app.logger.exception("Database commit failed, initiating Supabase storage rollback")
-            # Supabase rollback on database write failure
+            
             try:
                 supabase.storage.from_("water clogging images").remove([file_path])
             except Exception as rm_err:
@@ -651,7 +634,7 @@ def login():
     current_page = "login"
     image_path = url_for('static', filename='images/signup-bg.jpg')
     
-    # Pre-generate dummy hash to defend against timing attacks
+   
     dummy_hash = generate_password_hash("timing_safety_placeholder_password", method='pbkdf2:sha256')
 
     if form.validate_on_submit():
@@ -663,7 +646,6 @@ def login():
         if user:
             valid_pwd = check_password_hash(user.password, password)
         else:
-            # Perform verification against dummy hash to align request duration
             check_password_hash(dummy_hash, password)
             valid_pwd = False
 
@@ -717,7 +699,6 @@ def register():
             flash("Registration failed due to a database error. Please try again.")
             return render_template('form.html', form=form, img=image_path, current_page=current_page)
 
-        # Generate itsdangerous verification link
         token = generate_verification_token(email)
         verify_url = url_for('verify_email', token=token, _external=True)
 
@@ -770,7 +751,6 @@ def resend_verification():
 
         user = db.session.execute(db.select(User).where(User.email == email)).scalar()
         
-        # Prevent user enumeration by displaying a generic response
         generic_msg = "If the email is registered and unverified, a verification link has been sent."
         
         if not user:
@@ -781,7 +761,6 @@ def resend_verification():
             flash("Account already verified. Please log in.")
             return redirect(url_for('login'))
 
-        # Check database-backed 60-second limit cooldown
         if user.last_verification_sent:
             time_since_sent = datetime.now(timezone.utc) - user.last_verification_sent.replace(tzinfo=timezone.utc)
             if time_since_sent.total_seconds() < 60:
@@ -820,6 +799,5 @@ def logout():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    # Use environment-driven debug mode for local development execution only (defaulting to False)
     debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
     app.run(debug=debug_mode)
